@@ -28,8 +28,12 @@ light2.castShadow = true; // default false
 scene.add( light2 );
 
 // Create a Cube Mesh with basic material
-var geometry = new THREE.ConeGeometry( 1, 2, 6 );
+//var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+//var geometry = new THREE.SphereGeometry( 1, 12, 12 );
+//var geometry = new THREE.ConeGeometry( 1, 2, 6 );
 //var geometry = new THREE.TetrahedronGeometry( 1, 1 );
+//var geometry = new THREE.TetrahedronGeometry( 1);
+var geometry = new THREE.OctahedronGeometry( 1);
 //var geometry = new THREE.BoxGeometry( 1, 1, 1 );
 var material = new THREE.MeshPhongMaterial( { color: "#433F81" } );
 var cube = new THREE.Mesh( geometry, material );
