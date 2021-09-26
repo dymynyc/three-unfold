@@ -1,98 +1,5 @@
 module.exports = function (THREE) {
   var exports = {}
-  var sqrt = Math.sqrt
-  function sq (a) { return a * a }
-
-  //distance between 
-  var distance = exports.distance = function (a, b) {
-    return sqrt(sq(a.x-b.x) + sq(a.y-b.y) + sq(a.z-b.z))
-  }
-  //area of a triangle by heron's formula
-  function heron (a, b, c) {
-    var s = (a + b + c) / 2
-    return sqrt(s * (s - a) * (s - b) * (s - c))
-  }
-
-  function faceArea (a,b,c) {
-  //  console.log('area', a,b,c, distance(a,b), distance(b,c), distance(c,a))
-    return heron(distance(a, b), distance(b, c), distance(c, a))
-  }
-
-  function midpoint3(a, b, c) {
-    return {
-      x: (a.x+b.x+c.x)/3,
-      y: (a.y+b.y+c.y)/3,
-      z: (a.z+b.z+c.z)/3
-    }
-  }
-  function midpoint4(a, b, c, d) {
-    return {
-      x: (a.x+b.x+c.x+d.x)/4,
-      y: (a.y+b.y+c.y+d.y)/4,
-      z: (a.z+b.z+c.z+d.z)/4
-    }
-  }
-
-  //geometric center of a mesh surface
-  //if the object is hollow (with thin walls) this is also the center of mass.
-  exports.area = function (mesh) {
-    //center of each face
-    var center = {x:0, y:0, z: 0}, total_area = 0
-    var vts = mesh.geometry.vertices
-    var faces = mesh.geometry.faces
-    for(var i = 0; i < faces.length; i++) {
-      var face = faces[i]
-      var a = vts[face.a], b = vts[face.b], c = vts[face.c]
-      var area = faceArea(a, b, c)
-      var face_center = midpoint3(a, b, c)
-      center.x += face_center.x * area
-      center.y += face_center.y * area
-      center.z += face_center.z * area
-      total_area += area
-    }
-    return {x: c.x/total_area, y: c.y/total_area, z: c.z/total_area, area: total_area}
-  }
-
-  //TODO implement dot product and cross product
-
-  function sub(a, b) {
-    return {x: a.x-b.x, y:a.y-b.y, z:a.z-b.z}
-  }
-
-  function cross (a, b) {
-    return {
-      x: a.y*b.z - b.y*a.z,
-      y: a.x*b.z - b.x*a.z,
-      z: a.x*b.y - b.x*a.y
-    }
-  }
-
-  function dot(a, b) {
-    return a.x*b.x + a.y*b.y + a.z*b.z
-  }
-
-  function tetra_volume (a,b,c,d) {
-    // https://www.youtube.com/watch?v=xgGdrTH6WGw
-    return Math.abs(dot(cross(sub(a,b), sub(a,c)), sub(a,d)))/6
-  }
-
-  exports.volume = function (mesh) {
-    var center = {x:0, y:0, z: 0}, total_volume = 0
-    var vts = mesh.geometry.vertices
-    var faces = mesh.geometry.faces
-    for(var i = 0; i < faces.length; i++) {
-      var face = faces[i]
-      var a = vts[face.a], b = vts[face.b], c = vts[face.c]
-      var volume = tetra_volume(c, b, a, mesh.position)
-      var v_c = midpoint4(a,b,c,mesh.position)
-
-      center.x += v_c.x * volume
-      center.y += v_c.y * volume
-      center.z += v_c.z * volume
-      total_volume += volume
-    }
-    return {x: center.x/total_volume, y: center.y/total_volume, z: center.z/total_volume, volume: total_volume}
-  }
 
   exports.adjacent = function (geometry) {
     var faces = geometry.faces
@@ -121,19 +28,36 @@ module.exports = function (THREE) {
     return edges 
   }
 
-  exports.traverse = function (geometry, edges, iter) {
+  exports.traverse = function (geometry, edges, iter, compare) {
     var seen = []
     var faces = geometry.faces
     function edge(a,b) {
       return edges[Math.min(a,b)][Math.max(a,b)]
     }
-    ;(function next (i, j) {
-      if(seen[i]) return
+    var queue = [{to:0, from: -1}]
+    function enqueue(new_face, old_face) {
+      //queue.unshift({to:new_face, from:old_face})      
+      queue.push({to:new_face, from:old_face})      
+    }
+    function sort () {
+      if(compare) queue.sort(compare)
+    }
+
+    do {
+
+      var item = queue.shift()
+      var i = item.to, j = item.from
+//    ;(function next (i, j) {
+      if(seen[i]) continue
       else seen[i] = true
       var face = faces[i]
       //iter called with the face index, and the previous face
       iter(i, j)
 
+      //instead of depth first, make a heap,
+      //sorted by lowest dot product with previous side
+      //i.e. flattest curve
+      //and also distance from the first side?
       var possibles = [
         edge(face.a, face.b)[0],
         edge(face.a, face.b)[1],
@@ -142,17 +66,10 @@ module.exports = function (THREE) {
         edge(face.c, face.a)[0],
         edge(face.c, face.a)[1]
       ]
-//      .sort(()=> Math.random() - 0.5)
-      .forEach(v => next(v, i))
-/*
-      next(edge(face.a, face.b)[0], i)
-      next(edge(face.a, face.b)[1], i)
-      next(edge(face.b, face.c)[0], i)
-      next(edge(face.b, face.c)[1], i)
-      next(edge(face.c, face.a)[0], i)
-      next(edge(face.c, face.a)[1], i)
-*/
-    })(0, -1)
+      .filter(v => !seen[v])
+      .forEach(v => enqueue(v, i))
+      sort()
+    } while(queue.length)
   }
   //duplicate a geometry, but faces do not share vertices
   //the face indexes match, but adjacent faces will not share vertices
@@ -185,26 +102,88 @@ module.exports = function (THREE) {
     var vertices = geometry.vertices
     var q =  new THREE.Quaternion().setFromUnitVectors(face.normal, normal)
     //translate face so A vertice is at origin
-    //console.log(vertices[face.a].clone(), vertices[face.a].clone().multiplyScalar(-1))
     var v = vertices[face.a]
     m.makeTranslation(-v.x,-v.y,-v.z)
-//    console.log(m)
     //rotate so up is up
-  //  m.multiply(n.makeRotationFromQuaternion(q))
     m.multiply(n.makeRotationFromQuaternion(q))
 
     //rotate so that a-b 
-    //  m.multiply(vertices[face.a].copy().sub(vertices[face.b])
-//    console.log(m)
     vertices[face.a].applyMatrix4(m)
     vertices[face.b].applyMatrix4(m)
     vertices[face.c].applyMatrix4(m)
     geometry.computeFaceNormals()
     return geometry
   }
+  exports.flatten = function flatten (geometry) {
+    var up = new THREE.Vector3(0,0,1)
+    var adjacent = exports.adjacent(geometry)
+    var u_geometry = exports.separateFaces(geometry) //new THREE.BoxGeometry( 1, 1, 1 ))
+    //var u_geometry = 
+    var edges = ['a', 'b', 'c']
+    var min = Math.min, max = Math.max
+    var faces = geometry.faces
 
-  exports.moveFaceAlongEdge = function () {
-    
+    for(var i = 0; i < u_geometry.faces.length; i++)
+     exports.rotateFace(u_geometry, i, up)
+ 
+
+    exports.traverse(geometry, adjacent, function (i, j) {
+      //which vertices in common?
+      //skip if it's the first face
+      //move this face so that it is horizontal
+      if(!~j) {
+        return
+      }
+      var f = geometry.faces[i]
+      var g = geometry.faces[j]
+      var vertices = geometry.vertices
+      var u_vertices = u_geometry.vertices
+      var u_faces = u_geometry.faces
+      for(var k = 0; k < 3; k++)
+        for(var l = 0; l < 3; l++) {
+          var A1 = f[edges[k]]
+          var A2 = f[edges[(k+1) % 3]]
+          var B1 = g[edges[l]]
+          var B2 = g[edges[(l+1) % 3]]
+          //hmm, it looks like min/max arn't needed.
+          //between two faces the vertices in a matching edge are always the opposite direction.
+          //i.a,i.b is the same edge as j.a,j.b then vertices[i.a] == vertices[j.b]
+          if(min(A1, A2) == min(B1, B2) && max(A1,A2) == max(B1, B2)) {
+            //console.log('face:', i, [A1, A2], [B1, B2], edges[k]+edges[(k+1)%3], edges[l]+edges[(l+1)%3])
+            //rotate face[i] so that A1,A2 is along B1,B2 (hmm, seems to be already rotated!?)
+            //then translate so that they are in the same position too.
+            var O1 = u_vertices[u_faces[i][edges[k]]]
+            var O2 = u_vertices[u_faces[i][edges[(k+1) % 3]]]
+            var P1 = u_vertices[u_faces[j][edges[l]]]
+            var P2 = u_vertices[u_faces[j][edges[(l+1)%3]]]
+            var q = new THREE.Quaternion().setFromUnitVectors(
+              O1.clone().sub(O2).normalize(),
+              P2.clone().sub(P1).normalize()
+            )
+            
+            u_vertices[u_faces[i].a].applyQuaternion(q)
+            u_vertices[u_faces[i].b].applyQuaternion(q)
+            u_vertices[u_faces[i].c].applyQuaternion(q)
+            
+            var t = P1.clone().sub(O2)
+
+            u_vertices[u_faces[i].a].add(t)
+            u_vertices[u_faces[i].b].add(t)
+            u_vertices[u_faces[i].c].add(t)
+          }
+        }
+    },
+    function compare (a, b) {
+      return (
+        faces[b.to].normal.dot(faces[b.from].normal) -
+        faces[a.to].normal.dot(faces[a.from].normal)
+      ) * Math.random()
+    }
+    )
+//    u_geometry.vertices.forEach((v, i) => v.z = i/10)
+    u_geometry.computeFaceNormals()
+    return u_geometry
   }
+
   return exports
 }
